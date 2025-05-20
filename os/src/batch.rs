@@ -21,6 +21,7 @@ struct UserStack {
     data: [u8; USER_STACK_SIZE],
 }
 
+// initialize the stacks
 static KERNEL_STACK: KernelStack = KernelStack {
     data: [0; KERNEL_STACK_SIZE],
 };
@@ -50,7 +51,7 @@ impl UserStack {
 struct AppManager {
     num_app: usize,
     current_app: usize,
-    app_start: [usize; MAX_APP_NUM + 1],
+    app_start: [usize; MAX_APP_NUM + 1],    //保存_num_app中每一个应用对应的地址
 }
 
 impl AppManager {
@@ -109,8 +110,8 @@ lazy_static! {
             let num_app = num_app_ptr.read_volatile();
             let mut app_start: [usize; MAX_APP_NUM + 1] = [0; MAX_APP_NUM + 1];
             let app_start_raw: &[usize] =
-                core::slice::from_raw_parts(num_app_ptr.add(1), num_app + 1);
-            app_start[..=num_app].copy_from_slice(app_start_raw);
+                core::slice::from_raw_parts(num_app_ptr.add(1), num_app + 1);   //第一个元素是应用数量，所以加一才能得到第一个应用的地址
+            app_start[..=num_app].copy_from_slice(app_start_raw);   //因为包括了最后一个元素的end，所以右区间闭
             AppManager {
                 num_app,
                 current_app: 0,
