@@ -13,7 +13,7 @@ __switch:
     #     next_task_cx_ptr: *const TaskContext
     # )
     # save kernel stack of current task
-    sd sp, 8(a0)
+    sd sp, 8(a0)    //在结构体TaskContext的字段中, sp的偏移量是8个字节
     # save ra & s0~s11 of current execution
     sd ra, 0(a0)
     .set n, 0

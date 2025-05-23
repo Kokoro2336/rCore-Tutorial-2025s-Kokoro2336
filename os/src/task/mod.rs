@@ -20,6 +20,14 @@ use crate::sync::UPSafeCell;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
+use crate::syscall::{ 
+    SYSCALL_TYPES,
+    SYSCALL_WRITE,
+    SYSCALL_EXIT,
+    SYSCALL_YIELD,
+    SYSCALL_GET_TIME,
+    SYSCALL_TRACE,
+};
 
 pub use context::TaskContext;
 
@@ -54,6 +62,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            nsyscall: [0; SYSCALL_TYPES],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -95,6 +104,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_status = TaskStatus::Ready;
+        drop(inner);
     }
 
     /// Change the status of current `Running` task into `Exited`.
@@ -102,6 +112,7 @@ impl TaskManager {
         let mut inner = self.inner.exclusive_access();
         let current = inner.current_task;
         inner.tasks[current].task_status = TaskStatus::Exited;
+        drop(inner);
     }
 
     /// Find next task to run and return task id.
@@ -110,9 +121,11 @@ impl TaskManager {
     fn find_next_task(&self) -> Option<usize> {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
-        (current + 1..current + self.num_app + 1)
+        let next_task = (current + 1..current + self.num_app + 1)
             .map(|id| id % self.num_app)
-            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
+            .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready);
+        drop(inner);
+        next_task
     }
 
     /// Switch current `Running` task to the task we have found,
@@ -135,6 +148,47 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+}
+
+/// get current task
+pub fn get_current_task() -> usize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+    drop(inner);
+    current_task
+}
+
+/// increment the num of current task's syscall
+pub fn inc_syscall_num(id: usize) {
+    let current_task = get_current_task();
+    let i_syscall: usize = match id {
+        SYSCALL_WRITE => 0,
+        SYSCALL_EXIT => 1,
+        SYSCALL_YIELD => 2,
+        SYSCALL_GET_TIME => 3,
+        SYSCALL_TRACE => 4,
+        _ => panic!("Invalid syscall id"),
+    };
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    inner.tasks[current_task].nsyscall[i_syscall] += 1;
+    drop(inner);
+}
+
+/// get the num of current task's syscall
+pub fn get_syscall_num(id: usize) -> usize {
+    let current_task = get_current_task();
+    let i_syscall: usize = match id {
+        SYSCALL_WRITE => 0,
+        SYSCALL_EXIT => 1,
+        SYSCALL_YIELD => 2,
+        SYSCALL_GET_TIME => 3,
+        SYSCALL_TRACE => 4,
+        _ => panic!("Invalid syscall id"),
+    };
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let nsyscall = inner.tasks[current_task].nsyscall;
+    drop(inner);
+    nsyscall[i_syscall]
 }
 
 /// Run the first task in task list.
