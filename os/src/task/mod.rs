@@ -15,7 +15,9 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr};
 use crate::sync::UPSafeCell;
+use crate::syscall::SYSCALL_TYPES;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
@@ -48,6 +50,7 @@ struct TaskManagerInner {
     current_task: usize,
 }
 
+// 这一段在全局初始化时就会执行完毕。也就是说，在系统启动之前，应用就会全部加载到Manager中。
 lazy_static! {
     /// a `TaskManager` global instance through lazy_static!
     pub static ref TASK_MANAGER: TaskManager = {
@@ -153,6 +156,78 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+}
+
+/// get current task
+pub fn get_current_task() -> usize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+    drop(inner);
+    current_task
+}
+
+/// mmap space start with _start_va in current task mem_set
+pub fn mmap_current_task(start_va: VirtAddr, end_va: VirtAddr, port: usize, data: Option<&[u8]>) {
+    let current_task = get_current_task();
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let memory_set = &mut inner.tasks[current_task].memory_set;
+    let map_perm = MapPermission::from_bits(port as u8).unwrap();
+
+    memory_set.insert_framed_area_with_data(start_va, end_va, map_perm, data);
+}
+
+/// munmap space start with _start_va in current task mem_set
+pub fn munmap_current_task(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    let current_task = get_current_task();
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    {
+        let memory_set = &inner.tasks[current_task].memory_set;
+
+        let contains = memory_set.contains(start_va, end_va);
+        if !contains {
+            trace!("kernel: munmap address not mapped");
+            return -1;
+        }
+    }
+
+    {
+        let memory_set = &mut inner.tasks[current_task].memory_set;
+        let page_table = &mut memory_set.page_table;
+        for area in &mut memory_set.areas {
+            if start_va.floor() >= area.vpn_range.get_start() && end_va.ceil() <= area.vpn_range.get_end() {
+                area.unmap(page_table);
+            }
+        };
+
+        0
+    }
+}
+
+/// increment the num of current task's syscall
+pub fn inc_syscall_num(id: usize) {
+    let current_task = get_current_task();
+    let i_syscall: usize = SYSCALL_TYPES
+        .iter()
+        .position(|&x| x == id)
+        .expect("Invalid syscall id");
+
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    inner.tasks[current_task].nsyscall[i_syscall] += 1;
+    drop(inner);
+}
+
+/// get the num of current task's syscall
+pub fn get_syscall_num(id: usize) -> usize {
+    let current_task = get_current_task();
+    let i_syscall: usize = SYSCALL_TYPES
+        .iter()
+        .position(|&x| x == id)
+        .expect("Invalid syscall id");
+
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let nsyscall = inner.tasks[current_task].nsyscall;
+    drop(inner);
+    nsyscall[i_syscall]
 }
 
 /// Run the first task in task list.
