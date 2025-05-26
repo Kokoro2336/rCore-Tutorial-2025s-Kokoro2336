@@ -5,6 +5,7 @@ use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
 use crate::trap::{trap_handler, TrapContext};
+use crate::syscall::SYSCALL_TYPES;
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -28,6 +29,9 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+
+    /// syscall times
+    pub nsyscall: [ usize; SYSCALL_TYPES.len() ],
 }
 
 impl TaskControlBlock {
@@ -63,6 +67,7 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            nsyscall: [0; SYSCALL_TYPES.len()],
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -95,6 +100,11 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    ///get the memory set of the task
+    pub fn get_memory_set(&mut self) -> &MemorySet {
+        &self.memory_set
     }
 }
 

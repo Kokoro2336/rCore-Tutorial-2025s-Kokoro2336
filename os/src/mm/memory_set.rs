@@ -35,8 +35,11 @@ lazy_static! {
 }
 /// address space
 pub struct MemorySet {
-    page_table: PageTable,
-    areas: Vec<MapArea>,
+    /// the page table of this memory set
+    pub page_table: PageTable,
+
+    /// the areas in this memory set
+    pub areas: Vec<MapArea>,
 }
 
 impl MemorySet {
@@ -63,6 +66,33 @@ impl MemorySet {
             None,
         );
     }
+
+    /// insert a new framed area with data.
+    pub fn insert_framed_area_with_data(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+        data: Option<&[u8]>,
+    ) {
+        self.push(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+            data,
+        );
+    }
+
+    /// to tell if the memory set contains the range [start_va, end_va)
+    pub fn contains(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+        for area in &self.areas {
+            if area.vpn_range.get_start() <= start_vpn && area.vpn_range.get_end() >= end_vpn {
+                return true;
+            }
+        }
+        false
+    }
+
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -265,7 +295,7 @@ impl MemorySet {
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
-    vpn_range: VPNRange,
+    pub vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
     map_type: MapType,
     map_perm: MapPermission,
