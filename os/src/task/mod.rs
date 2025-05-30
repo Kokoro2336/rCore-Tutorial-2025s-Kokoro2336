@@ -15,11 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
-<<<<<<< HEAD
 use crate::mm::{MapPermission, VirtAddr};
-=======
-use crate::mm::{MapPermission, PTEFlags, VirtAddr};
->>>>>>> 0fa1f41606bc45b633d40a2e935aa16af8b314de
 use crate::sync::UPSafeCell;
 use crate::syscall::SYSCALL_TYPES;
 use crate::trap::TrapContext;
@@ -171,34 +167,21 @@ pub fn get_current_task() -> usize {
 }
 
 /// mmap space start with _start_va in current task mem_set
-<<<<<<< HEAD
 pub fn mmap_current_task(start_va: VirtAddr, end_va: VirtAddr, port: usize, data: Option<&[u8]>) {
     let current_task = get_current_task();
     let mut inner = TASK_MANAGER.inner.exclusive_access();
     let memory_set = &mut inner.tasks[current_task].memory_set;
     let map_perm = MapPermission::from_bits(port as u8).unwrap();
-=======
-pub fn mmap_current_task(start_va: VirtAddr, end_va: VirtAddr, prot: usize, data: Option<&[u8]>) {
-    let mut inner = TASK_MANAGER.inner.exclusive_access();
-    let memory_set = &mut inner.tasks[get_current_task()].memory_set;
-    let map_perm = MapPermission::from_bits((prot << 1) as u8 | PTEFlags::U.bits()).unwrap();
->>>>>>> 0fa1f41606bc45b633d40a2e935aa16af8b314de
 
     memory_set.insert_framed_area_with_data(start_va, end_va, map_perm, data);
 }
 
 /// munmap space start with _start_va in current task mem_set
 pub fn munmap_current_task(start_va: VirtAddr, end_va: VirtAddr) -> isize {
-<<<<<<< HEAD
     let current_task = get_current_task();
     let mut inner = TASK_MANAGER.inner.exclusive_access();
     {
         let memory_set = &inner.tasks[current_task].memory_set;
-=======
-    let mut inner = TASK_MANAGER.inner.exclusive_access();
-    {
-        let memory_set = &inner.tasks[get_current_task()].memory_set;
->>>>>>> 0fa1f41606bc45b633d40a2e935aa16af8b314de
 
         let contains = memory_set.contains(start_va, end_va);
         if !contains {
@@ -208,11 +191,7 @@ pub fn munmap_current_task(start_va: VirtAddr, end_va: VirtAddr) -> isize {
     }
 
     {
-<<<<<<< HEAD
         let memory_set = &mut inner.tasks[current_task].memory_set;
-=======
-        let memory_set = &mut inner.tasks[get_current_task()].memory_set;
->>>>>>> 0fa1f41606bc45b633d40a2e935aa16af8b314de
         let page_table = &mut memory_set.page_table;
         for area in &mut memory_set.areas {
             if start_va.floor() >= area.vpn_range.get_start() && end_va.ceil() <= area.vpn_range.get_end() {
