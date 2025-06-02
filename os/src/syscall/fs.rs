@@ -86,18 +86,37 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
 
 /// YOUR JOB: Implement linkat.
 pub fn sys_linkat(_old_name: *const u8, _new_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_linkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    let current_task = current_task().unwrap();
+    let old_path = translated_str(current_user_token(), _old_name);
+    let new_path = translated_str(current_user_token(), _new_name);
+    if old_path == new_path {
+        panic!(
+            "kernel:pid[{}] sys_linkat failed: old_name and new_name are the same",
+            current_task.pid.0
+        );
+        return -1;
+    }
+
+    // get the inode of the file.
+    let old_inode = open_file(old_path.as_str(), OpenFlags::RDONLY);
+    // create new inode for the new_name
+    ROOT_INODE.linkat(new_path.as_str(), old_inode);
+    0
 }
 
 /// YOUR JOB: Implement unlinkat.
 pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+    let current_task = current_task().unwrap();
+    let name = translated_str(current_user_token(), _name);
+
+    if ROOT_INODE.find(name.as_str()).is_none() {
+        panic!(
+            "kernel:pid[{}] sys_unlinkat failed: file not found",
+            current_task.pid.0
+        );
+        return -1;
+    }
+
+    ROOT_INODE.unlinkat(name.as_str());
+    0
 }
