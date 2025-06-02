@@ -10,9 +10,11 @@ use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::string::String;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
+use crate::fs::StatMode;
 
 /// inode in memory
 /// A wrapper around a filesystem inode
@@ -20,12 +22,13 @@ use lazy_static::*;
 pub struct OSInode {
     readable: bool,
     writable: bool,
-    inner: UPSafeCell<OSInodeInner>,
+    /// The inner inode wrapped in UPSafeCell for thread safety
+    pub inner: UPSafeCell<OSInodeInner>,
 }
 /// The OS inode inner in 'UPSafeCell'
 pub struct OSInodeInner {
     offset: usize,
-    inode: Arc<Inode>,
+    pub inode: Arc<Inode>,
 }
 
 impl OSInode {
@@ -53,9 +56,37 @@ impl OSInode {
         }
         v
     }
+    /// get the mode of the inode(file or directory or null)
+    pub fn get_mode(&self) -> StatMode {
+    let inner = self.inner.exclusive_access();
+    let is_dir = inner.inode.is_dir();
+    let is_file = inner.inode.is_file();
+    drop(inner); // release the lock before returning
+
+    if is_dir {
+        StatMode::DIR
+    } else if is_file {
+        StatMode::FILE
+    } else {
+        StatMode::NULL
+    }
+}
+    /// get the id of the inode
+    pub fn get_inode_id(&self) -> u64 {
+        let inner = self.inner.exclusive_access();
+        let inode_id = inner.inode.get_inode_id_by_block_id_and_offset() as u64;
+        drop(inner);
+        inode_id
+    }
+    /// get the
+    pub fn get_nlink(&self) -> (Vec<String>, u32) {
+        let id = self.get_inode_id();
+        ROOT_INODE.get_hardlink_count_by_id(id as usize)
+    }
 }
 
 lazy_static! {
+    /// The root inode of the filesystem
     pub static ref ROOT_INODE: Arc<Inode> = {
         let efs = EasyFileSystem::open(BLOCK_DEVICE.clone());
         Arc::new(EasyFileSystem::root_inode(&efs))

@@ -13,8 +13,10 @@ pub struct EasyFileSystem {
     pub inode_bitmap: Bitmap,
     ///Data bitmap
     pub data_bitmap: Bitmap,
-    inode_area_start_block: u32,
-    data_area_start_block: u32,
+    ///Start block of inode area
+    pub inode_area_start_block: u32,
+    ///Start block of data area
+    pub data_area_start_block: u32,
 }
 
 type DataBlock = [u8; BLOCK_SZ];
@@ -147,5 +149,18 @@ impl EasyFileSystem {
             &self.block_device,
             (block_id - self.data_area_start_block) as usize,
         )
+    }
+    /// Deallocate a inode
+    pub fn dealloc_inode(&mut self, inode_id: u32) {
+        let (inode_block_id, inode_offset) = self.get_disk_inode_pos(inode_id);
+        get_block_cache(inode_block_id as usize, Arc::clone(&self.block_device))
+            .lock()
+            .modify(0, |inode_block: &mut DataBlock| {
+                let inode_area = &mut inode_block[inode_offset..inode_offset + core::mem::size_of::<DiskInode>()];
+                inode_area.iter_mut().for_each(|p| {
+                    *p = 0;
+                })
+            });
+        self.inode_bitmap.dealloc(&self.block_device, inode_id as usize);
     }
 }

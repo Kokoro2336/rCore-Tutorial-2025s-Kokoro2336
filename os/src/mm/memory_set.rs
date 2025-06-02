@@ -251,6 +251,32 @@ impl MemorySet {
             elf.header.pt2.entry_point() as usize,
         )
     }
+
+    /// insert a new framed area with data.
+    pub fn insert_framed_area_with_data(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+        data: Option<&[u8]>,
+    ) {
+        self.push(
+            MapArea::new(start_va, end_va, MapType::Framed, permission),
+            data,
+        );
+    }
+
+    /// To tell if the areas in the memory set contains the range given by start_va and end_va
+    pub fn contains(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let mut contains = false;
+        for area in self.get_map_areas() {
+            if area.contains(start_va, end_va) {
+                contains = true;
+            }
+        }
+        contains
+    }
+
     /// Create a new address space by copy code&data from a exited process's address space.
     pub fn from_existed_user(user_space: &Self) -> Self {
         let mut memory_set = Self::new_bare();
@@ -317,6 +343,21 @@ impl MemorySet {
         } else {
             false
         }
+    }
+
+    /// get the token of the memory set
+    pub fn get_token(&self) -> usize {
+        self.page_table.token()
+    }
+
+    /// get the mapped areas of the memory set as mutable
+    pub fn get_map_areas_mut(&mut self) -> &mut Vec<MapArea> {
+        &mut self.areas
+    }
+
+    /// get the mapped areas of the memory set as immutable
+    pub fn get_map_areas(&self) -> &Vec<MapArea> {
+        &self.areas
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory
@@ -417,6 +458,18 @@ impl MapArea {
             }
             current_vpn.step();
         }
+    }
+    
+    pub fn start(&self) -> VirtPageNum {
+        self.vpn_range.get_start()
+    }
+
+    pub fn end(&self) -> VirtPageNum {
+        self.vpn_range.get_end()
+    }
+
+    pub fn contains(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        start_va.floor() >= self.start() && end_va.ceil() <= self.end()
     }
 }
 

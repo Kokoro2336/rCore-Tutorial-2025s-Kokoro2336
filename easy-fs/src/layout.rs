@@ -69,6 +69,7 @@ impl SuperBlock {
 }
 /// Type of a disk inode
 #[derive(PartialEq)]
+#[derive(Clone)]
 pub enum DiskInodeType {
     File,
     Directory,
@@ -80,6 +81,7 @@ type IndirectBlock = [u32; BLOCK_SZ / 4];
 type DataBlock = [u8; BLOCK_SZ];
 /// A disk inode
 #[repr(C)]
+#[derive(Clone)]
 pub struct DiskInode {
     pub size: u32,
     pub direct: [u32; INODE_DIRECT_COUNT],
@@ -113,6 +115,13 @@ impl DiskInode {
     }
     fn _data_blocks(size: u32) -> u32 {
         (size + BLOCK_SZ as u32 - 1) / BLOCK_SZ as u32
+    }
+    /// copy from a existing disk inode
+    pub fn copy_from(&mut self, other: &DiskInode) {
+        self.size = other.size;
+        self.direct.copy_from_slice(&other.direct);
+        self.indirect1 = other.indirect1;
+        self.indirect2 = other.indirect2;
     }
     /// Return number of blocks needed include indirect1/2.
     pub fn total_blocks(size: u32) -> u32 {
