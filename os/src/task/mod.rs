@@ -24,13 +24,14 @@ mod task;
 use crate::loader::get_app_data_by_name;
 use alloc::sync::Arc;
 use lazy_static::*;
-pub use manager::{fetch_task, TaskManager};
+pub use manager::{fetch_task, TaskManager, TASK_MANAGER};
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+use crate::mm::{VirtAddr, MapPermission, PageTable};
 
+pub use task::{TaskControlBlock, TaskStatus, Stride};
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-pub use manager::add_task;
+pub use manager::{add_task, print_tasks};
 pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
     Processor,
@@ -114,4 +115,42 @@ lazy_static! {
 ///Add init process to the manager
 pub fn add_initproc() {
     add_task(INITPROC.clone());
+}
+
+/// mmap space start with _start_va in current task mem_set
+pub fn mmap_current_task(start_va: VirtAddr, end_va: VirtAddr, port: usize, data: Option<&[u8]>) {
+    let current_task = current_task().unwrap();
+    let inner = &mut current_task.inner_exclusive_access();
+    let memory_set = &mut inner.memory_set;
+    let map_perm = MapPermission::from_bits(port as u8).unwrap();
+
+    memory_set.insert_framed_area_with_data(start_va, end_va, map_perm, data);
+}
+
+/// munmap space start with _start_va in current task mem_set
+pub fn munmap_current_task(start_va: VirtAddr, end_va: VirtAddr) -> isize {
+    let current_task = current_task().unwrap();
+    let inner = &mut current_task.inner_exclusive_access();
+    {
+        let memory_set = &mut inner.memory_set;
+
+        let contains = memory_set.contains(start_va, end_va);
+        if !contains {
+            trace!("kernel: munmap address not mapped");
+            return -1;
+        }
+    }
+
+    {
+        let memory_set = &mut inner.memory_set;
+        // 通过token重新获得page table，而不是直接在memory set中拿，以此绕过borrow checker.
+        let page_table = &mut PageTable::from_token(memory_set.get_token());
+        for area in memory_set.get_map_areas_mut() {
+            if area.contains(start_va, end_va) {
+                area.unmap(page_table);
+            }
+        };
+
+        0
+    }
 }

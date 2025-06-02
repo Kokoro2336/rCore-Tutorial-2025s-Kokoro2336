@@ -5,10 +5,12 @@
 //! and the replacement and transfer of control flow of different applications are executed.
 
 use super::__switch;
-use super::{fetch_task, TaskStatus};
+use super::{TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
+use crate::task::manager::{get_task_with_smallest_stride};
 use crate::trap::TrapContext;
+use crate::config::BIG_STRIDE;
 use alloc::sync::Arc;
 use lazy_static::*;
 
@@ -55,10 +57,19 @@ lazy_static! {
 pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
-        if let Some(task) = fetch_task() {
+        if let Some(task) = get_task_with_smallest_stride() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
+            //get priority\
+            let priority = {
+                let task_inner = task.inner_exclusive_access();
+                task_inner.get_priority()
+            };
+                
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
+            // set stride
+            let stride = &mut task_inner.stride;
+            stride.0 += BIG_STRIDE / priority;
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
             // release coming task_inner manually
@@ -99,6 +110,12 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .inner_exclusive_access()
         .get_trap_cx()
 }
+
+// #[deny(dead_code, warnings)]
+// pub fn get_current_task_memory_set() -> &'static mut MemorySet {
+//     unsafe { (&mut current_task().unwrap().inner_exclusive_access()
+//         .memory_set as *mut MemorySet).as_mut().unwrap() }
+// }
 
 ///Return to idle control flow for new scheduling
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
