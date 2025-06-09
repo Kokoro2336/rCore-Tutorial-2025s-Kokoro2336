@@ -7,6 +7,7 @@ use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::task::manager::{add_task};
 use crate::trap::{trap_handler, TrapContext};
+use crate::loader::{get_app_data_by_name};
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -45,6 +46,37 @@ impl Stride {
     }
 }
 
+
+/// Stride structure for stride scheduling
+pub struct Stride(pub isize);
+
+impl PartialEq for Stride {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl PartialOrd for Stride {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        if (self.0 < other.0 && other.0 - self.0 <= isize::MAX / 2)
+            || (self.0 > other.0 && self.0 - other.0 >= isize::MAX / 2) {
+            Some(core::cmp::Ordering::Less)
+        } else if (self.0 > other.0 && self.0 - other.0 <= isize::MAX / 2) 
+            || (self.0 < other.0 && other.0 - self.0 >= isize::MAX / 2) {
+            Some(core::cmp::Ordering::Greater)
+        } else {
+            Some(core::cmp::Ordering::Equal)
+
+        }
+    }
+}
+
+impl Stride {
+    /// Create a new stride with the given value
+    pub fn new(value: isize) -> Self {
+        Stride(value)
+    }
+}
 
 /// Task control block structure
 ///
@@ -135,6 +167,9 @@ impl TaskControlBlockInner {
             self.fd_table.push(None);
             self.fd_table.len() - 1
         }
+    }
+    pub fn get_priority(&self) -> isize {
+        self.priority
     }
 
     pub fn get_priority(&self) -> isize {
